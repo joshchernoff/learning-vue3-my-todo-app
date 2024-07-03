@@ -3,7 +3,7 @@
     <h1 class="text-2xl font-bold mb-4">Todo App</h1>
     <input
       v-model="newTodoText"
-      @keyup.enter="addTodo"
+      @keyup.enter="handleAddTodo"
       placeholder="Add a new todo"
       class="w-full p-2 border rounded mb-4"
     />
@@ -17,7 +17,7 @@
           <input
             type="checkbox"
             :checked="todo.completed"
-            @change="toggleTodoCompletion(todo.id)"
+            @change="handleToggleTodoCompletion(todo.id)"
             class="mr-2"
           />
           <span :class="{ 'line-through text-gray-500': todo.completed }">
@@ -25,7 +25,7 @@
           </span>
         </label>
         <button
-          @click="removeTodo(todo.id)"
+          @click="handleRemoveTodo(todo.id)"
           class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
         >
           Remove
@@ -36,36 +36,66 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref } from 'vue';
-import { useTodoStore } from '../store/todoStore';
+import { defineComponent, ref, computed } from 'vue';
+import { useTodoStore, Todo } from '../store/todoStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 
 export default defineComponent({
   name: 'TodoApp',
   setup() {
     const todoStore = useTodoStore();
-    const newTodoText = ref('');
+    const queryClient = useQueryClient();
+    const newTodoText = ref<string>('');
 
-    const addTodo = () => {
+    const { data, refetch } = useQuery<Todo[], Error>({
+      queryKey: ['todos'],
+      queryFn: todoStore.loadTodos,
+    });
+
+    const todos = computed(() => data.value ?? []);
+
+    const addTodoMutation = useMutation({
+      mutationFn: todoStore.addTodo,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['todos'] });
+      },
+    });
+
+    const toggleTodoCompletionMutation = useMutation({
+      mutationFn: todoStore.toggleTodoCompletion,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['todos'] });
+      },
+    });
+
+    const removeTodoMutation = useMutation({
+      mutationFn: todoStore.removeTodo,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['todos'] });
+      },
+    });
+
+    const handleAddTodo = () => {
       if (newTodoText.value.trim() !== '') {
-        todoStore.addTodo(newTodoText.value);
+        addTodoMutation.mutate(newTodoText.value);
         newTodoText.value = '';
       }
     };
 
-    const toggleTodoCompletion = (id: number) => {
-      todoStore.toggleTodoCompletion(id);
+    const handleToggleTodoCompletion = (id: number) => {
+      toggleTodoCompletionMutation.mutate(id);
     };
 
-    const removeTodo = (id: number) => {
-      todoStore.removeTodo(id);
+    const handleRemoveTodo = (id: number) => {
+      removeTodoMutation.mutate(id);
     };
 
     return {
       newTodoText,
-      todos: todoStore.todos,
-      addTodo,
-      toggleTodoCompletion,
-      removeTodo,
+      todos,
+      handleAddTodo,
+      handleToggleTodoCompletion,
+      handleRemoveTodo,
     };
   },
 });
