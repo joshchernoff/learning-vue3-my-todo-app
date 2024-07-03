@@ -36,9 +36,10 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed } from 'vue';
+import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useTodoStore, Todo } from '../store/todoStore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
+import { supabase } from '../lib/supabaseClient';
 
 export default defineComponent({
   name: 'TodoApp',
@@ -52,7 +53,7 @@ export default defineComponent({
       queryFn: todoStore.loadTodos,
     });
 
-    const todos = computed(() => data.value ?? []);
+    const todos = computed(() => data?.value ?? []);
 
     const addTodoMutation = useMutation({
       mutationFn: todoStore.addTodo,
@@ -89,6 +90,26 @@ export default defineComponent({
     const handleRemoveTodo = (id: number) => {
       removeTodoMutation.mutate(id);
     };
+
+    const handleRealtimeUpdate = (payload: any) => {
+      console.log('Change received!', payload);
+      refetch();
+    };
+
+    onMounted(() => {
+      const channel = supabase
+        .channel('public:todos')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'todos' },
+          handleRealtimeUpdate
+        )
+        .subscribe();
+
+      onUnmounted(() => {
+        supabase.removeChannel(channel);
+      });
+    });
 
     return {
       newTodoText,
