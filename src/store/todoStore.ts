@@ -1,6 +1,6 @@
 // src/store/todoStore.ts
 import { defineStore } from 'pinia';
-import { reactive, watch } from 'vue';
+import { ref } from 'vue';
 import { supabase } from '../lib/supabaseClient';
 
 export interface Todo {
@@ -10,47 +10,28 @@ export interface Todo {
 }
 
 export const useTodoStore = defineStore('todo', () => {
-  const state = reactive({
-    todos: [] as Todo[],
-    nextId: 1,
-  });
+  const todos = ref<Todo[]>([]);
 
-  // Load todos from Supabase
   const loadTodos = async (): Promise<Todo[]> => {
     const { data, error } = await supabase.from('todos').select('*');
     if (error) throw error;
-    return data as Todo[];
+    todos.value = data as Todo[];
+    return todos.value;
   };
 
-  // Save todos to local storage whenever they change
-  watch(
-    () => state.todos,
-    (newTodos) => {
-      localStorage.setItem('todos', JSON.stringify(newTodos));
-    },
-    { deep: true }
-  );
-
-  watch(
-    () => state.nextId,
-    (newNextId) => {
-      localStorage.setItem('nextId', newNextId.toString());
-    }
-  );
-
-  const addTodo = async (text: string) => {
+  const addTodo = async (text: string): Promise<Todo> => {
     const { data, error } = await supabase
       .from('todos')
       .insert([{ text, completed: false }])
       .select('*')
       .single();
     if (error) throw error;
-    state.todos.push(data as Todo);
-    state.nextId++;
+    todos.value.push(data as Todo);
+    return data as Todo;
   };
 
   const toggleTodoCompletion = async (id: number) => {
-    const todo = state.todos.find((todo) => todo.id === id);
+    const todo = todos.value.find((todo) => todo.id === id);
     if (todo) {
       const { data, error } = await supabase
         .from('todos')
@@ -59,21 +40,18 @@ export const useTodoStore = defineStore('todo', () => {
         .select('*')
         .single();
       if (error) throw error;
-      todo.completed = (data as Todo).completed;
+      Object.assign(todo, data);
     }
   };
 
   const removeTodo = async (id: number) => {
     const { error } = await supabase.from('todos').delete().eq('id', id);
     if (error) throw error;
-    const index = state.todos.findIndex((todo) => todo.id === id);
-    if (index !== -1) {
-      state.todos.splice(index, 1);
-    }
+    todos.value = todos.value.filter((todo) => todo.id !== id);
   };
 
   return {
-    todos: state.todos,
+    todos,
     loadTodos,
     addTodo,
     toggleTodoCompletion,

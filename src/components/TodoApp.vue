@@ -17,7 +17,7 @@
           <input
             type="checkbox"
             :checked="todo.completed"
-            @change="handleToggleTodoCompletion(todo.id)"
+            @change="() => handleToggleTodoCompletion(todo.id)"
             class="mr-2"
           />
           <span :class="{ 'line-through text-gray-500': todo.completed }">
@@ -25,7 +25,7 @@
           </span>
         </label>
         <button
-          @click="handleRemoveTodo(todo.id)"
+          @click="() => handleRemoveTodo(todo.id)"
           class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
         >
           Remove
@@ -47,18 +47,30 @@ export default defineComponent({
     const todoStore = useTodoStore();
     const queryClient = useQueryClient();
     const newTodoText = ref<string>('');
+    const localIds = new Set();
 
     const { data, refetch } = useQuery<Todo[], Error>({
       queryKey: ['todos'],
       queryFn: todoStore.loadTodos,
     });
 
-    const todos = computed(() => data?.value ?? []);
+    const todos = computed(() => todoStore.todos);
 
     const addTodoMutation = useMutation({
       mutationFn: todoStore.addTodo,
+      onMutate: async (newTodo) => {
+        // Add a temporary unique identifier
+        const tempId = Date.now();
+        localIds.add(tempId);
+        return { tempId };
+      },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['todos'] });
+      },
+      onSettled: (_data, _error, _newTodo, context) => {
+        if (context?.tempId) {
+          localIds.delete(context.tempId);
+        }
       },
     });
 
@@ -93,7 +105,22 @@ export default defineComponent({
 
     const handleRealtimeUpdate = (payload: any) => {
       console.log('Change received!', payload);
-      refetch();
+      if (payload.eventType === 'INSERT') {
+        if (!todoStore.todos.some((todo) => todo.id === payload.new.id)) {
+          todoStore.todos.push(payload.new);
+        }
+      } else if (payload.eventType === 'UPDATE') {
+        const index = todoStore.todos.findIndex(
+          (todo) => todo.id === payload.new.id
+        );
+        if (index !== -1) {
+          todoStore.todos[index] = payload.new;
+        }
+      } else if (payload.eventType === 'DELETE') {
+        todoStore.todos = todoStore.todos.filter(
+          (todo) => todo.id !== payload.old.id
+        );
+      }
     };
 
     onMounted(() => {
